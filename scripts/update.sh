@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 IMAGE="docker-iac-lab-web:latest"
 BACKUP="docker-iac-lab-web:rollback"
 
+# Save the current image before building, only if it exists.
 if docker image inspect "$IMAGE" >/dev/null 2>&1; then
   docker tag "$IMAGE" "$BACKUP"
 fi
