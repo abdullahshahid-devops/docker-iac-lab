@@ -1,0 +1,10 @@
+---
+- name: Docker IaC lab demonstration
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Display successful configuration management
+      ansible.builtin.debug:
+        msg: "Ansible playbook executed successfully"
