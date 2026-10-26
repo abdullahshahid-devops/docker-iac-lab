@@ -1,11 +1,79 @@
 terraform {
-  required_version = ">= 1.0"
+  required_providers {
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = "~> 3.0"
+    }
+  }
 }
 
-resource "terraform_data" "docker_iac_lab" {
-  input = "Docker IaC lab configuration verified"
+provider "docker" {
+  host = "unix:///var/run/docker.sock"
 }
 
-output "lab_message" {
-  value = terraform_data.docker_iac_lab.output
+resource "docker_network" "iac_network" {
+  name   = "terraform-iac-network"
+  driver = "bridge"
+}
+
+resource "docker_volume" "postgres_data" {
+  name = "terraform-postgres-data"
+}
+
+resource "docker_image" "postgres" {
+  name = "postgres:13"
+}
+
+resource "docker_container" "database" {
+  name  = "terraform-postgres"
+  image = docker_image.postgres.image_id
+
+  env = [
+    "POSTGRES_DB=terraformdb",
+    "POSTGRES_USER=postgres",
+    "POSTGRES_PASSWORD=terraform123"
+  ]
+
+  volumes {
+    volume_name    = docker_volume.postgres_data.name
+    container_path = "/var/lib/postgresql/data"
+  }
+
+  networks_advanced {
+    name = docker_network.iac_network.name
+  }
+
+  ports {
+    internal = 5432
+    external = 5433
+  }
+
+  restart = "unless-stopped"
+}
+
+resource "docker_image" "web" {
+  name = "docker-iac-web:latest"
+}
+
+resource "docker_container" "web_app" {
+  count = 2
+  name  = "terraform-web-${count.index + 1}"
+  image = docker_image.web.image_id
+
+  env = [
+    "ENVIRONMENT=terraform-managed",
+    "DATABASE_URL=postgresql://postgres:terraform123@terraform-postgres:5432/terraformdb"
+  ]
+
+  networks_advanced {
+    name = docker_network.iac_network.name
+  }
+
+  ports {
+    internal = 5000
+    external = 5001 + count.index
+  }
+
+  depends_on = [docker_container.database]
+  restart    = "unless-stopped"
 }

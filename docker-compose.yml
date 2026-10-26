@@ -21,6 +21,17 @@ services:
     networks:
       - iac-network
 
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - web
+    networks:
+      - iac-network
+
 networks:
   iac-network:
     driver: bridge

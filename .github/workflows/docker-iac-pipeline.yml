@@ -2,23 +2,22 @@ name: Docker IaC Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker build -t docker-iac-web:test ./web-app
+        run: docker build -t docker-iac-web:latest ./web-app
 
       - name: Run container
-        run: docker run -d --name iac-test -p 5000:5000 docker-iac-web:test
+        run: docker run -d --name iac-test -p 5000:5000 docker-iac-web:latest
 
       - name: Test health endpoint
         run: |
@@ -30,3 +29,61 @@ jobs:
           done
           docker logs iac-test
           exit 1
+
+  staging-deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate staging configuration
+        run: docker compose -f docker-compose.staging.yml config -q
+
+      - name: Build staging image
+        run: docker build -t docker-iac-web:latest ./web-app
+
+      - name: Start staging stack
+        run: docker compose -f docker-compose.staging.yml up -d --build
+
+      - name: Verify staging health
+        run: |
+          for i in $(seq 1 15); do
+            if curl -fsS http://localhost:8082/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f docker-compose.staging.yml logs
+          exit 1
+
+      - name: Stop staging stack
+        if: always()
+        run: docker compose -f docker-compose.staging.yml down -v
+
+  production-terraform-validation:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Build image for Terraform
+        run: docker build -t docker-iac-web:latest ./web-app
+
+      - name: Terraform format check
+        working-directory: infrastructure
+        run: terraform fmt -check -recursive
+
+      - name: Terraform initialize
+        working-directory: infrastructure
+        run: terraform init -input=false
+
+      - name: Terraform validate
+        working-directory: infrastructure
+        run: terraform validate
