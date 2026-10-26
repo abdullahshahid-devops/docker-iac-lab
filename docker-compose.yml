@@ -1,5 +1,6 @@
 services:
   web:
+    image: docker-iac-lab-web:latest
     build: ./web-app
     ports:
       - "5000"
